@@ -3,7 +3,7 @@ use std::{env, io};
 use tracing_subscriber::{fmt, EnvFilter};
 
 pub struct AppEnv {
-    pub database_url: String,
+    database_url: String,
     rust_log: String,
 }
 
@@ -33,6 +33,10 @@ impl AppEnv {
             .try_init()?;
 
         Ok(())
+    }
+
+    pub fn database_url(&self) -> &str {
+        self.database_url.as_str()
     }
 }
 
