@@ -1,0 +1,65 @@
+# Architecture Plan
+
+## Proposed module structure
+
+- `Cargo.toml`: Leptos full-stack app with Axum SSR, hydration, router, `sqlx`, `dotenvy`, `tracing`, and Docker-friendly build settings.
+- `src/lib.rs`: shared app entry, Leptos shell, route wiring, server function registration, and shared types exported to client/server builds.
+- `src/main.rs`: SSR server bootstrap, env loading, tracing setup, socket binding, SQLite pool creation, migration execution, and Axum app startup.
+- `src/app.rs`: top-level `App` component and route-to-filter mapping for `/`, `/active`, `/completed`.
+- `src/domain/todo.rs`: `Todo`, `TodoFilter`, and small request/response DTOs shared by server functions and UI.
+- `src/server/mod.rs`: server-only wiring and shared error/result helpers.
+- `src/server/todos.rs`: all `#[server]` todo CRUD/query functions, grouped behind one module so UI code stays thin.
+- `src/db/mod.rs`: pool type alias, connection helpers, and migration runner.
+- `src/components/`
+  - `todo_input.rs`
+  - `todo_list.rs`
+  - `todo_item.rs`
+  - `todo_footer.rs`
+- `migrations/`: SQLx migrations, starting with the `todos` table and index.
+- `style/` or `assets/`: vendored TodoMVC CSS assets bundled by `cargo-leptos`.
+- `Dockerfile`: multi-stage build using `cargo leptos build --release`.
+
+## Shared types and boundaries
+
+- Keep `Todo` and `TodoFilter` in a shared domain module compiled for both `ssr` and `hydrate`.
+- Keep database pool and SQLx details server-only; client code should only interact through `#[server]` functions.
+- Prefer server functions to return domain types instead of raw SQL rows so later UI issues only depend on stable Rust structs.
+- Use route path as the single source of truth for filter state; components receive the filter or derived counts rather than owning separate filter state.
+
+## Issue dependency plan
+
+- Foundation:
+  - Issue 1 creates the Leptos/Axum skeleton.
+  - Issue 2 adds env/loading/logging on top of the skeleton.
+  - Issue 3 adds SQLite pool + migration bootstrapping after env config exists.
+  - Issue 4 adds the first migration after SQLx is wired.
+  - Issue 5 adds TodoMVC assets after the app shell exists.
+- Shared model and API:
+  - Issue 6 defines `Todo` and `TodoFilter` after schema is known.
+  - Issues 7-10 build the server API in one layer over the shared types and DB pool.
+- UI shell and components:
+  - Issue 11 establishes router + shell after CSS assets and filter type exist.
+  - Issue 12 depends on add flow from Issue 8 plus shell from Issue 11.
+  - Issue 13 depends on query/toggle/delete flows from Issues 7, 9, and 10.
+  - Issue 14 extends `TodoItem` editing on top of Issue 13.
+  - Issue 15 depends on list data/counts and routing from Issues 7, 10, 11, and 13.
+  - Issue 16 depends on list/footer behavior being in place.
+- Delivery:
+  - Issue 17 depends on a complete buildable app and finalized env/build conventions.
+  - Issue 18 depends on the runnable app and Docker path.
+  - Issue 19 is a final spec pass after all behavior is implemented.
+
+## Key design decisions
+
+- Use a single SQLite pool created once at startup and injected into Leptos server context for every server function.
+- Run migrations automatically on boot so local dev, Docker, and acceptance testing behave the same way.
+- Store todos with integer IDs, trimmed titles, boolean completion, and `created_at` ordering exactly as the issue scopes describe.
+- Keep mutations spec-driven:
+  - empty create is rejected
+  - empty edit deletes the item
+  - `clear_completed` and `toggle_all` live server-side to preserve reload persistence
+- Minimize client-only state:
+  - editing text for one row
+  - pending submission/mutation state
+  - route-derived filter
+- Prefer a small number of stable files and modules now so later issue sessions can add behavior incrementally without restructuring.
